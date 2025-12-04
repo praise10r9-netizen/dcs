@@ -82,7 +82,7 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
           PopupMenuButton<String?>(
             icon: const Icon(Icons.account_circle),
             itemBuilder: (context) => [
-              PopupMenuItem<String?>(
+              PopupMenuItem(
                 child: ListTile(
                   leading: const Icon(Icons.person),
                   title: Text(ctrl.db.auth.currentUser?.email ?? 'User'),
@@ -477,9 +477,13 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
                       });
                     } catch (e) {
                       if (!mounted) return;
-                     
+                      Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e')),
+                        SnackBar(
+                          content: Text('Error: $e'),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 5),
+                        ),
                       );
                     }
                   },
