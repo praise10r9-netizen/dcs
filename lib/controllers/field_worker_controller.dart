@@ -64,7 +64,6 @@ class FieldWorkerController extends ChangeNotifier {
           .update({'status': 'read'})
           .eq('id', notificationId);
 
-      // Update local state
       final index = notifications.indexWhere((n) => n['id'] == notificationId);
       if (index != -1) {
         notifications[index]['status'] = 'read';
@@ -91,7 +90,7 @@ class FieldWorkerController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------
-  // FETCH MY TEAMS (teams where user is a member)
+  // FETCH MY TEAMS (only accepted teams with active schedules)
   // ------------------------------------------------------------
   Future<void> fetchMyTeams() async {
     final userId = getCurrentUserId();
@@ -101,23 +100,77 @@ class FieldWorkerController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final res = await db.from('team').select();
+      // Fetch all teams with schedules
+      final res = await db.from('team').select('*, job_schedule(*)');
 
-      // Filter teams where current user is in members array
+      debugPrint('Fetched ${res.length} teams from database');
+
+      // Filter teams where user is accepted
       myTeams = List<Map<String, dynamic>>.from(res).where((team) {
         final members = team['members'];
+        List<dynamic> membersList = [];
+        
+        // Parse members JSON
         if (members is String) {
           try {
-            final membersList = jsonDecode(members) as List;
-            return membersList.contains(userId);
-          } catch (_) {
+            membersList = jsonDecode(members) as List;
+          } catch (e) {
+            debugPrint('Error parsing members JSON for team ${team['id']}: $e');
             return false;
           }
         } else if (members is List) {
-          return members.contains(userId);
+          membersList = List.from(members);
+        } else if (members is Map) {
+          // Handle case where members might be a map
+          membersList = [members];
         }
-        return false;
+
+        debugPrint('Team ${team['id']} (${team['team_name']}): ${membersList.length} members');
+
+        // Check if user is accepted in this team
+        bool isAccepted = false;
+        for (final member in membersList) {
+          debugPrint('Checking member: $member');
+          if (member is Map) {
+            final memberUserId = member['user_id']?.toString();
+            final memberStatus = member['status']?.toString();
+            
+            debugPrint('Member userId: $memberUserId, status: $memberStatus, current user: $userId');
+            
+            if (memberUserId == userId && memberStatus == 'accepted') {
+              isAccepted = true;
+              debugPrint('User is accepted in team ${team['id']}');
+              break;
+            }
+          }
+        }
+
+        if (!isAccepted) {
+          debugPrint('User not accepted in team ${team['id']}');
+          return false;
+        }
+
+        // Check if schedule exists and is active or in grace period
+        final schedules = team['job_schedule'];
+        if (schedules == null) {
+          debugPrint('No schedule for team ${team['id']}');
+          return false;
+        }
+
+        if (schedules is List && schedules.isEmpty) {
+          debugPrint('Empty schedule list for team ${team['id']}');
+          return false;
+        }
+
+        final schedule = schedules is List ? schedules[0] : schedules;
+        final isActive = _isScheduleActiveOrGrace(schedule);
+        
+        debugPrint('Team ${team['id']} schedule active: $isActive');
+        
+        return isActive;
       }).toList();
+
+      debugPrint('Filtered to ${myTeams.length} accepted teams for user');
     } catch (e) {
       debugPrint('fetchMyTeams error: $e');
       myTeams = [];
@@ -128,10 +181,29 @@ class FieldWorkerController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------
+  // CHECK IF SCHEDULE IS ACTIVE OR IN GRACE PERIOD
+  // ------------------------------------------------------------
+  bool _isScheduleActiveOrGrace(dynamic schedule) {
+    if (schedule == null) return false;
+    
+    try {
+      final now = DateTime.now();
+      final scheduled = DateTime.parse(schedule['scheduled_date']);
+      final deadline = DateTime.parse(schedule['deadline']);
+      final gracePeriod = deadline.add(const Duration(days: 2));
+      
+      // Active if between scheduled date and grace period end
+      return now.isAfter(scheduled.subtract(const Duration(days: 1))) && 
+             now.isBefore(gracePeriod);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ------------------------------------------------------------
   // EXTRACT TEAM ID FROM NOTIFICATION MESSAGE
   // ------------------------------------------------------------
   int? extractTeamIdFromNotification(String message) {
-    // Expected format: "... (Team ID: 123)..."
     final regex = RegExp(r'Team ID:\s*(\d+)');
     final match = regex.firstMatch(message);
     if (match != null) {
@@ -151,40 +223,100 @@ class FieldWorkerController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch team to verify user is in members
+      debugPrint('Attempting to join team $teamId for user $userId');
+
+      // Fetch team with schedule
       final teamRow = await db
           .from('team')
-          .select()
+          .select('*, job_schedule(*)')
           .eq('id', teamId)
-          .maybeSingle();
+          .single();
 
-      if (teamRow == null) {
-        throw Exception('Team not found');
-      }
+      debugPrint('Team fetched: ${teamRow['team_name']}');
 
-      // Verify user is in members list
+      // Parse members - handle both JSON string and array
       final members = teamRow['members'];
-      List<dynamic> membersList = [];
+      List<Map<String, dynamic>> membersList = [];
       
       if (members is String) {
-        membersList = jsonDecode(members);
+        final decoded = jsonDecode(members);
+        if (decoded is List) {
+          membersList = decoded.map((m) => Map<String, dynamic>.from(m as Map)).toList();
+        }
       } else if (members is List) {
-        membersList = List.from(members);
+        membersList = members.map((m) => Map<String, dynamic>.from(m as Map)).toList();
       }
 
-      if (!membersList.contains(userId)) {
+      debugPrint('Parsed ${membersList.length} members');
+
+      // Find user and update status to accepted
+      bool found = false;
+      for (int i = 0; i < membersList.length; i++) {
+        final memberUserId = membersList[i]['user_id']?.toString();
+        debugPrint('Checking member $i: userId=$memberUserId');
+        
+        if (memberUserId == userId) {
+          membersList[i]['status'] = 'accepted';
+          found = true;
+          debugPrint('Updated member $i status to accepted');
+          break;
+        }
+      }
+
+      if (!found) {
         throw Exception('You are not invited to this team');
       }
 
-      // Mark notification as read/accepted
+      // Check schedule conflicts
+      final schedules = teamRow['job_schedule'];
+      if (schedules != null && schedules.isNotEmpty) {
+        final schedule = schedules is List ? schedules[0] : schedules;
+        final scheduledDate = DateTime.parse(schedule['scheduled_date']);
+        final deadline = DateTime.parse(schedule['deadline']);
+        
+        debugPrint('Checking conflicts for dates: $scheduledDate to $deadline');
+        
+        final conflicts = await _checkScheduleConflicts(
+          userId, 
+          scheduledDate, 
+          deadline,
+          excludeTeamId: teamId,
+        );
+
+        if (conflicts.isNotEmpty) {
+          debugPrint('Found ${conflicts.length} conflicts');
+          throw Exception(
+            'Schedule conflict detected with ${conflicts.length} other team(s). '
+            'Please decline one of them first.'
+          );
+        }
+      }
+
+      // Update team with accepted status - store as JSON array
+      debugPrint('Updating team members to: $membersList');
+      
+      await db.from('team').update({
+        'members': membersList, // Supabase will handle JSON serialization
+      }).eq('id', teamId);
+
+      debugPrint('Team updated successfully');
+
+      // Mark notification as read
       await markNotificationAsRead(notificationId);
+      debugPrint('Notification marked as read');
 
       // Refresh teams list
       await fetchMyTeams();
+      debugPrint('Teams refreshed, found ${myTeams.length} teams');
 
-      // Auto-select the newly joined team
-      selectedTeamId = teamId.toString();
-      await fetchTeamForms(teamId);
+      // Auto-select the newly joined team if it appears
+      if (myTeams.any((t) => t['id'] == teamId)) {
+        selectedTeamId = teamId.toString();
+        await fetchTeamForms(teamId);
+        debugPrint('Team selected and forms fetched');
+      } else {
+        debugPrint('Warning: Team $teamId not found in myTeams after acceptance');
+      }
     } catch (e) {
       debugPrint('joinTeam error: $e');
       rethrow;
@@ -195,10 +327,112 @@ class FieldWorkerController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------
+  // CHECK SCHEDULE CONFLICTS
+  // ------------------------------------------------------------
+  Future<List<Map<String, dynamic>>> _checkScheduleConflicts(
+    String userId,
+    DateTime scheduledDate,
+    DateTime deadline,
+    {int? excludeTeamId}
+  ) async {
+    try {
+      final allTeams = await db.from('team').select('*, job_schedule(*)');
+      
+      List<Map<String, dynamic>> conflicts = [];
+      
+      for (final team in allTeams) {
+        // Skip the team we're trying to join
+        if (excludeTeamId != null && team['id'] == excludeTeamId) continue;
+        
+        // Check if user is accepted in this team
+        final members = team['members'];
+        List<dynamic> membersList = [];
+        
+        if (members is String) {
+          membersList = jsonDecode(members);
+        } else if (members is List) {
+          membersList = List.from(members);
+        }
+        
+        bool isAccepted = false;
+        for (final member in membersList) {
+          if (member is Map && 
+              member['user_id'] == userId && 
+              member['status'] == 'accepted') {
+            isAccepted = true;
+            break;
+          }
+        }
+        
+        if (!isAccepted) continue;
+        
+        // Check schedule overlap
+        final schedules = team['job_schedule'];
+        if (schedules == null || (schedules is List && schedules.isEmpty)) continue;
+        
+        final schedule = schedules is List ? schedules[0] : schedules;
+        final teamScheduled = DateTime.parse(schedule['scheduled_date']);
+        final teamDeadline = DateTime.parse(schedule['deadline']);
+        
+        // Check for overlap (including grace period)
+        final gracePeriod = teamDeadline.add(const Duration(days: 2));
+        final newGracePeriod = deadline.add(const Duration(days: 2));
+        
+        if (scheduledDate.isBefore(gracePeriod) && newGracePeriod.isAfter(teamScheduled)) {
+          conflicts.add(team);
+        }
+      }
+      
+      return conflicts;
+    } catch (e) {
+      debugPrint('_checkScheduleConflicts error: $e');
+      return [];
+    }
+  }
+
+  // ------------------------------------------------------------
   // DECLINE TEAM INVITATION
   // ------------------------------------------------------------
-  Future<void> declineTeamInvitation(int notificationId) async {
+  Future<void> declineTeamInvitation(int teamId, int notificationId) async {
+    final userId = getCurrentUserId();
+    if (userId == null) throw Exception('User not logged in');
+
     try {
+      // Fetch team
+      final teamRow = await db
+          .from('team')
+          .select('members')
+          .eq('id', teamId)
+          .maybeSingle();
+
+      if (teamRow == null) {
+        throw Exception('Team not found');
+      }
+
+      // Parse members
+      final members = teamRow['members'];
+      List<dynamic> membersList = [];
+      
+      if (members is String) {
+        membersList = jsonDecode(members);
+      } else if (members is List) {
+        membersList = List.from(members);
+      }
+
+      // Find user and update status to declined
+      for (int i = 0; i < membersList.length; i++) {
+        if (membersList[i] is Map && membersList[i]['user_id'] == userId) {
+          membersList[i]['status'] = 'declined';
+          break;
+        }
+      }
+
+      // Update team
+      await db.from('team').update({
+        'members': membersList,
+      }).eq('id', teamId);
+
+      // Delete notification
       await deleteNotification(notificationId);
     } catch (e) {
       debugPrint('declineTeamInvitation error: $e');
@@ -214,29 +448,42 @@ class FieldWorkerController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch team resources
+      debugPrint('Fetching forms for team $teamId');
+
       final teamRow = await db
           .from('team')
           .select('resources')
           .eq('id', teamId)
-          .maybeSingle();
+          .single();
 
-      if (teamRow == null || teamRow['resources'] == null) {
+      debugPrint('Team resources: ${teamRow['resources']}');
+
+      if (teamRow['resources'] == null) {
+        debugPrint('No resources found for team $teamId');
         availableForms = [];
         loadingForms = false;
         notifyListeners();
         return;
       }
 
-      // Parse resources (array of form IDs)
+      // Parse resources
       List<dynamic> resourceIds = [];
-      if (teamRow['resources'] is String) {
-        resourceIds = jsonDecode(teamRow['resources']);
-      } else if (teamRow['resources'] is List) {
-        resourceIds = List.from(teamRow['resources']);
+      final resources = teamRow['resources'];
+      
+      if (resources is String) {
+        try {
+          resourceIds = jsonDecode(resources);
+        } catch (e) {
+          debugPrint('Error parsing resources JSON: $e');
+        }
+      } else if (resources is List) {
+        resourceIds = List.from(resources);
       }
 
+      debugPrint('Parsed resource IDs: $resourceIds');
+
       if (resourceIds.isEmpty) {
+        debugPrint('No form IDs in resources');
         availableForms = [];
         loadingForms = false;
         notifyListeners();
@@ -250,6 +497,7 @@ class FieldWorkerController extends ChangeNotifier {
           .inFilter('form_id', resourceIds);
 
       availableForms = List<Map<String, dynamic>>.from(formsRes);
+      debugPrint('Fetched ${availableForms.length} forms');
     } catch (e) {
       debugPrint('fetchTeamForms error: $e');
       availableForms = [];
@@ -273,6 +521,32 @@ class FieldWorkerController extends ChangeNotifier {
   // ------------------------------------------------------------
   int getUnreadNotificationCount() {
     return notifications.where((n) => n['status'] == 'unread').length;
+  }
+
+  // ------------------------------------------------------------
+  // GET TEAM SCHEDULE STATUS
+  // ------------------------------------------------------------
+  String getTeamScheduleStatus(Map<String, dynamic> team) {
+    final schedules = team['job_schedule'];
+    if (schedules == null || (schedules is List && schedules.isEmpty)) {
+      return 'No schedule';
+    }
+
+    final schedule = schedules is List ? schedules[0] : schedules;
+    final now = DateTime.now();
+    final scheduled = DateTime.parse(schedule['scheduled_date']);
+    final deadline = DateTime.parse(schedule['deadline']);
+    final gracePeriod = deadline.add(const Duration(days: 2));
+
+    if (now.isBefore(scheduled)) {
+      return 'Upcoming';
+    } else if (now.isAfter(scheduled) && now.isBefore(deadline)) {
+      return 'Active';
+    } else if (now.isAfter(deadline) && now.isBefore(gracePeriod)) {
+      return 'Grace Period';
+    } else {
+      return 'Completed';
+    }
   }
 
   // ------------------------------------------------------------
