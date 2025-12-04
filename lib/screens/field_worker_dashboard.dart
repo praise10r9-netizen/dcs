@@ -20,6 +20,48 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
     ctrl.refreshAll();
   }
 
+  void _switchToTab(int index) {
+    if (mounted) {
+      setState(() {
+        _selectedIndex = index;
+      });
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        await ctrl.db.auth.signOut();
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error logging out: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,8 +69,41 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
         title: const Text('Field Worker Dashboard'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.bug_report),
+            tooltip: 'Debug',
+            onPressed: () {
+              Navigator.pushNamed(context, '/debugTeams');
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => ctrl.refreshAll(),
+          ),
+          PopupMenuButton<String?>(
+            icon: const Icon(Icons.account_circle),
+            itemBuilder: (context) => [
+              PopupMenuItem<String?>(
+                child: ListTile(
+                  leading: const Icon(Icons.person),
+                  title: Text(ctrl.db.auth.currentUser?.email ?? 'User'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'logout',
+                child: const ListTile(
+                  leading: Icon(Icons.logout, color: Colors.red),
+                  title: Text('Logout', style: TextStyle(color: Colors.red)),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+            onSelected: (value) {
+              if (value == 'logout') {
+                _logout();
+              }
+            },
           ),
         ],
       ),
@@ -47,11 +122,7 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
+        onTap: _switchToTab,
         items: [
           BottomNavigationBarItem(
             icon: Badge(
@@ -209,10 +280,21 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Organization: ${team['organization'] ?? 'N/A'}'),
-                  Text(
-                    'Created: ${_formatDateTime(team['created_at'])}',
-                    style: const TextStyle(fontSize: 11),
-                  ),
+                  if (team['job_schedule'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Status: ${ctrl.getTeamScheduleStatus(team)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(ctrl.getTeamScheduleStatus(team)),
+                      ),
+                    ),
+                    Text(
+                      _getScheduleDates(team),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
                 ],
               ),
               trailing: Icon(
@@ -335,8 +417,13 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
             Text(notification['message'] ?? ''),
             const SizedBox(height: 16),
             const Text(
-              'Would you like to join this team?',
+              'Would you like to accept this invitation?',
               style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Note: You can be part of multiple teams if schedules don\'t conflict.',
+              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
             ),
           ],
         ),
@@ -345,11 +432,13 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
             onPressed: () async {
               Navigator.pop(context);
               try {
-                await ctrl.declineTeamInvitation(notification['id']);
+                await ctrl.declineTeamInvitation(teamId, notification['id']);
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Invitation declined')),
                 );
+                // Refresh to update UI
+                await ctrl.refreshAll();
               } catch (e) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -367,18 +456,28 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
                       await ctrl.joinTeam(teamId, notification['id']);
                       if (!mounted) return;
                       Navigator.pop(context);
+                      
+                      // Force refresh all data
+                      await ctrl.refreshAll();
+                      
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Successfully joined team!'),
+                        SnackBar(
+                          content: Text(
+                            'Successfully accepted invitation! '
+                            'You are now part of ${ctrl.myTeams.length} team(s).'
+                          ),
                           backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
                         ),
                       );
+                      
+                      // Switch to My Teams tab to show the team
                       setState(() {
-                        _selectedIndex = 1; // Switch to My Teams tab
+                        _selectedIndex = 1;
                       });
                     } catch (e) {
                       if (!mounted) return;
-                      Navigator.pop(context);
+                     
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Error: $e')),
                       );
@@ -502,5 +601,33 @@ class _FieldWorkerDashboardState extends State<FieldWorkerDashboard> {
     } catch (e) {
       return dateTime.toString();
     }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Active':
+        return Colors.green;
+      case 'Upcoming':
+        return Colors.blue;
+      case 'Grace Period':
+        return Colors.orange;
+      case 'Completed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getScheduleDates(Map<String, dynamic> team) {
+    final schedules = team['job_schedule'];
+    if (schedules == null || (schedules is List && schedules.isEmpty)) {
+      return 'No schedule';
+    }
+
+    final schedule = schedules is List ? schedules[0] : schedules;
+    final scheduledDate = DateTime.parse(schedule['scheduled_date']);
+    final deadline = DateTime.parse(schedule['deadline']);
+
+    return 'Start: ${scheduledDate.month}/${scheduledDate.day} • Deadline: ${deadline.month}/${deadline.day}';
   }
 }

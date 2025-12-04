@@ -1,4 +1,5 @@
 // lib/routes.dart
+import 'package:dcs/screens/debug_team_screen.dart';
 import 'package:dcs/screens/field_worker_dashboard.dart';
 import 'package:dcs/screens/formbuilder_screen.dart';
 import 'package:dcs/screens/live_data_screen.dart';
@@ -18,5 +19,6 @@ final Map<String, WidgetBuilder> appRoutes = {
   '/organizeTeam': (_) => TeamBuilderScreen(),
   '/fieldWorker': (_) => FieldWorkerDashboard(),
   '/liveSession': (_) => LiveDataScreen(),
+  '/debugTeams': (_) => DebugTeamScreen(),
   '/admin': (_) => Scaffold(body: Center(child: Text('Admin Dashboard'))),
 };
