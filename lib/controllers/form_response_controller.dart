@@ -1,6 +1,4 @@
 // lib/controllers/form_response_controller.dart
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../controllers/form_builder_controller.dart';
@@ -54,20 +52,18 @@ class FormResponseController extends ChangeNotifier {
       responseData.clear();
       validationErrors.clear();
 
-      if (fieldsRes is List) {
-        for (final row in fieldsRes) {
-          final field = FormFieldModel.fromDb(Map<String, dynamic>.from(row as Map));
-          fields.add(field);
-          
-          // Initialize response data based on field type
-          if (field.fieldType == 'checkbox') {
-            responseData[field.label] = <String>[]; // Multiple values
-          } else {
-            responseData[field.label] = null;
-          }
+      for (final row in fieldsRes) {
+        final field = FormFieldModel.fromDb(Map<String, dynamic>.from(row as Map));
+        fields.add(field);
+        
+        // Initialize response data based on field type
+        if (field.fieldType == 'checkbox') {
+          responseData[field.label] = <String>[]; // Multiple values
+        } else {
+          responseData[field.label] = null;
         }
       }
-    } catch (e) {
+        } catch (e) {
       debugPrint('loadForm error: $e');
       rethrow;
     } finally {

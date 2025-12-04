@@ -38,7 +38,7 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
       ),
       body: AnimatedBuilder(
         animation: ctrl,
-        builder: (_, __) {
+        builder: (_,_) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -113,7 +113,7 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
                     labelText: 'Qualification Category',
                     prefixIcon: Icon(Icons.school),
                   ),
-                  value: ctrl.selectedQualification,
+                  initialValue: ctrl.selectedQualification,
                   items: ctrl.qualificationCategories
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                       .toList(),

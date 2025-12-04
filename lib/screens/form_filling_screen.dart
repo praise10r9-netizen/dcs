@@ -441,7 +441,7 @@ class _FormFillingScreenState extends State<FormFillingScreen> {
     final currentValue = ctrl.getFieldValue(field.label);
 
     return DropdownButtonFormField<String>(
-      value: currentValue,
+      initialValue: currentValue,
       decoration: InputDecoration(
         border: const OutlineInputBorder(),
         filled: true,

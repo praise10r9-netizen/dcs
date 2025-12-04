@@ -228,7 +228,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           itemBuilder: (context, index) {
                             final field = ctrl.fields[index];
                             return Card(
-                              key: ValueKey('field-${index}-${field.fieldType}-${field.label}'),
+                              key: ValueKey('field-$index-${field.fieldType}-${field.label}'),
                               margin: const EdgeInsets.symmetric(vertical: 8),
                               child: ListTile(
                                 title: Text(field.label),

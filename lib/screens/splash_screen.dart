@@ -29,15 +29,9 @@ class _SplashScreenState extends State<SplashScreen> {
       // Check if user has an active session
       final user = controller.getCurrentUser(context);
 
-      if (user != null) {
-        // User is logged in, redirect based on role
-        await controller.checkSession(context);
-      } else {
-        // No session, go to login
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/login');
-      }
-    } catch (e) {
+      // User is logged in, redirect based on role
+      await controller.checkSession(context);
+        } catch (e) {
       debugPrint('Splash screen error: $e');
       
       if (!mounted) return;

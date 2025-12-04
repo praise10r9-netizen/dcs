@@ -162,12 +162,10 @@ class FormBuilderController extends ChangeNotifier {
     // fetch fields
     final ff = await supabase.from('form_fields').select().eq('form_id', formId).order('field_id');
     fields.clear();
-    if (ff is List) {
-      for (final r in ff) {
-        fields.add(FormFieldModel.fromDb(Map<String, dynamic>.from(r as Map)));
-      }
+    for (final r in ff) {
+      fields.add(FormFieldModel.fromDb(Map<String, dynamic>.from(r as Map)));
     }
-    notifyListeners();
+      notifyListeners();
   }
 
   // update metadata
@@ -231,7 +229,6 @@ class FormBuilderController extends ChangeNotifier {
             .insert(form!.toJsonForDb())
             .select()
             .single();
-        if (inserted == null) throw Exception('Failed to insert form');
         formId = inserted['form_id'] as int;
         form!.formId = formId;
       } else {

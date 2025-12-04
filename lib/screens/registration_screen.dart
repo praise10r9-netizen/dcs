@@ -233,7 +233,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
                   // Role Dropdown
                   DropdownButtonFormField<String>(
-                    value: _role,
+                    initialValue: _role,
                     decoration: InputDecoration(
                       labelText: "Role",
                       border: OutlineInputBorder(
