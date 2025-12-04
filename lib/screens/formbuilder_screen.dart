@@ -34,6 +34,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     _nameCtrl.text = ctrl.form?.formName ?? '';
     _subjectCtrl.text = ctrl.form?.subject ?? '';
     _descCtrl.text = ctrl.form?.description ?? '';
+
+    // Show form details modal immediately after navigation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showFormDetailsModal();
+    });
   }
 
   @override
@@ -68,99 +73,100 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       appBar: AppBar(
         title: Text(ctrl.form?.formName ?? 'Form Builder'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.remove_red_eye),
-            tooltip: 'Preview',
-            onPressed: () => _openPreview(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Save to DB',
-            onPressed: () async => _saveForm(),
-          ),
-        IconButton(
-  icon: const Icon(Icons.share),
-  tooltip: 'Share',
-  onPressed: () async {
-    // Save the form first if not saved
-    if (ctrl.form?.formId == null) {
-      final id = await ctrl.saveFormToDb();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Form saved (ID: $id)')));
-    }
-
-    // Fetch available teams
-    final teams = await ctrl.fetchTeams();
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: SizedBox(
-            height: 400,
-            child: Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Share Form With Team', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'preview') {
+                _openPreview();
+              } else if (value == 'share') {
+                _shareForm();
+              } else if (value == 'edit_details') {
+                _showFormDetailsModal();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit_details',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit, size: 20),
+                    SizedBox(width: 12),
+                    Text('Edit Details'),
+                  ],
                 ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: teams.length,
-                    itemBuilder: (ctx, i) {
-                      final team = teams[i];
-                      return ListTile(
-                        title: Text(team['team_name'] ?? 'Team ${team['id']}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.send, color: Colors.blue),
-                          onPressed: () async {
-                            await ctrl.shareFormToTeam(team['id']);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Form shared with ${team['team_name']}')),
-                            );
-                            Navigator.pop(ctx);
-                          },
-                        ),
-                      );
-                    },
-                  ),
+              ),
+              const PopupMenuItem(
+                value: 'preview',
+                child: Row(
+                  children: [
+                    Icon(Icons.remove_red_eye, size: 20),
+                    SizedBox(width: 12),
+                    Text('Preview'),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const PopupMenuItem(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(Icons.share, size: 20),
+                    SizedBox(width: 12),
+                    Text('Share'),
+                  ],
+                ),
+              ),
+            ],
           ),
-        );
-      },
-    );
-  },
-),
- 
         ],
       ),
+
       body: Row(
         children: [
           // LEFT SIDEBAR
           Container(
             width: 72,
-            color: Colors.grey.shade200,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              border: Border(
+                right: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+            ),
             child: Column(
               children: [
                 const SizedBox(height: 12),
                 for (final f in commonFields)
-                  IconButton(
-                    tooltip: f['label'],
-                    icon: Icon(_iconForType(f['type']!)),
-                    onPressed: () {
-                      _addFieldFromType(f['type']!, defaultLabel: f['label']!);
-                    },
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: IconButton(
+                      tooltip: f['label'],
+                      icon: Icon(_iconForType(f['type']!), size: 24),
+                      onPressed: () {
+                        _addFieldFromType(f['type']!, defaultLabel: f['label']!);
+                      },
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color.fromARGB(255, 5, 38, 70),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
                   ),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.more_horiz),
-                  tooltip: 'More',
-                  onPressed: _openMoreDialog,
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: IconButton(
+                    icon: const Icon(Icons.more_horiz, size: 24),
+                    tooltip: 'More',
+                    onPressed: _openMoreDialog,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.grey.shade700,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -170,88 +176,212 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           // CANVAS
           Expanded(
             child: Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  // Form metadata editor
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _nameCtrl,
-                            decoration: const InputDecoration(labelText: 'Form name'),
-                            onChanged: (v) => ctrl.updateFormName(v),
+              color: Colors.grey.shade50,
+              child: AnimatedBuilder(
+                animation: ctrl,
+                builder: (context, _) {
+                  if (ctrl.fields.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.dashboard_customize_outlined, 
+                            size: 80, 
+                            color: Colors.grey.shade400,
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _subjectCtrl,
-                            decoration: const InputDecoration(labelText: 'Subject'),
-                            onChanged: (v) => ctrl.updateSubject(v),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No fields yet',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _descCtrl,
-                            decoration: const InputDecoration(labelText: 'Description'),
-                            onChanged: (v) => ctrl.updateDescription(v),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Choose from the left toolbar to add fields',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                            ),
                           ),
+                        ],
+                      ),
+                    );
+                  }
+                  return ReorderableListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: ctrl.fields.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        // ReorderableListView uses a different newIndex semantics
+                        if (newIndex > oldIndex) newIndex -= 1;
+                        ctrl.moveField(oldIndex, newIndex);
+                      });
+                    },
+                    itemBuilder: (context, index) {
+                      final field = ctrl.fields[index];
+                      return Card(
+                        key: ValueKey('field-${index}-${field.fieldType}-${field.label}'),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
-                    ),
-                  ),
-
-                  const Divider(height: 1),
-
-                  // Canvas area
-                  Expanded(
-                    child: AnimatedBuilder(
-                      animation: ctrl,
-                      builder: (context, _) {
-                        if (ctrl.fields.isEmpty) {
-                          return Center(child: Text('No fields on canvas — choose from left toolbar or More.'));
-                        }
-                        return ReorderableListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: ctrl.fields.length,
-                          onReorder: (oldIndex, newIndex) {
-                            setState(() {
-                              // ReorderableListView uses a different newIndex semantics
-                              if (newIndex > oldIndex) newIndex -= 1;
-                              ctrl.moveField(oldIndex, newIndex);
-                            });
-                          },
-                          itemBuilder: (context, index) {
-                            final field = ctrl.fields[index];
-                            return Card(
-                              key: ValueKey('field-${index}-${field.fieldType}-${field.label}'),
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              child: ListTile(
-                                title: Text(field.label),
-                                subtitle: Text(field.fieldType),
-                                leading: Icon(_iconForType(field.fieldType)),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.settings),
-                                  onPressed: () => _openFieldSettings(index),
-                                ),
-                                onTap: () => _openFieldSettings(index),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          title: Text(
+                            field.label,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              field.fieldType.toUpperCase(),
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
                               ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                            ),
+                          ),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              _iconForType(field.fieldType),
+                              color: const Color.fromARGB(255, 5, 38, 70),
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.settings_outlined),
+                            onPressed: () => _openFieldSettings(index),
+                          ),
+                          onTap: () => _openFieldSettings(index),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // Form details modal that appears immediately
+  void _showFormDetailsModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            width: 500,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Form Details',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                //textfields for name, subject, description
+                TextField(
+                  controller: _nameCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Form Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  onChanged: (v) {
+                    ctrl.updateFormName(v);
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _subjectCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Subject',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  onChanged: (v) => ctrl.updateSubject(v),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _descCtrl,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  onChanged: (v) => ctrl.updateDescription(v),
+                ),
+                const SizedBox(height: 15),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await _saveForm();
+                      Navigator.pop(ctx);
+                    },
+                    style: ElevatedButton.styleFrom(
+                  
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -293,33 +423,46 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       context: context,
       builder: (ctx) {
         return Dialog(
-          child: SizedBox(
-            width: 320,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('More fields', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final f in moreFields)
-                        ElevatedButton.icon(
-                          icon: Icon(_iconForType(f['type']!)),
-                          label: Text(f['label']!),
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _addFieldFromType(f['type']!, defaultLabel: f['label']!);
-                          },
-                        ),
-                    ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            width: 360,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'More Fields',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
                   ),
-                  const SizedBox(height: 12),
-                ],
-              ),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final f in moreFields)
+                      ElevatedButton.icon(
+                        icon: Icon(_iconForType(f['type']!)),
+                        label: Text(f['label']!),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _addFieldFromType(f['type']!, defaultLabel: f['label']!);
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
             ),
           ),
         );
@@ -341,7 +484,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -364,14 +509,29 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             }
 
             return Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                     Row(
                       children: [
-                        Text('Edit ${field.fieldType}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(
+                          'Edit ${field.fieldType}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
                         const Spacer(),
                         IconButton(
                           icon: const Icon(Icons.delete_forever, color: Colors.red),
@@ -384,33 +544,96 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         )
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    TextField(controller: labelCtrl, decoration: const InputDecoration(labelText: 'Label')),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: labelCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Label',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     if (field.fieldType == 'text' || field.fieldType == 'email')
-                      TextField(controller: placeholderCtrl, decoration: const InputDecoration(labelText: 'Placeholder')),
+                      TextField(
+                        controller: placeholderCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Placeholder',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
                     if (field.fieldType == 'number') ...[
-                      TextField(controller: minCtrl, decoration: const InputDecoration(labelText: 'Min (optional)'), keyboardType: TextInputType.number),
-                      const SizedBox(height: 8),
-                      TextField(controller: maxCtrl, decoration: const InputDecoration(labelText: 'Max (optional)'), keyboardType: TextInputType.number),
+                      TextField(
+                        controller: minCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Min (optional)',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: maxCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Max (optional)',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
                     ],
                     SwitchListTile(
                       title: const Text('Required'),
                       value: requiredFlag,
                       onChanged: (v) => setS(() => requiredFlag = v),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 16),
+
                     // Options for radio/checkbox/dropdown
                     if (field.fieldType == 'radio' || field.fieldType == 'checkbox' || field.fieldType == 'dropdown') ...[
-                      const SizedBox(height: 8),
-                      const Align(alignment: Alignment.centerLeft, child: Text('Options')),
-                      const SizedBox(height: 8),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Options',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       for (int i = 0; i < optionCtrls.length; i++)
-                        Row(
-                          children: [
-                            Expanded(child: TextField(controller: optionCtrls[i], decoration: InputDecoration(labelText: 'Option ${i + 1}'))),
-                            IconButton(icon: const Icon(Icons.remove_circle, color: Colors.red), onPressed: () => setS(() => optionCtrls.removeAt(i))),
-                          ],
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: optionCtrls[i],
+                                  decoration: InputDecoration(
+                                    labelText: 'Option ${i + 1}',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                onPressed: () => setS(() => optionCtrls.removeAt(i)),
+                              ),
+                            ],
+                          ),
                         ),
                       TextButton.icon(
                         icon: const Icon(Icons.add),
@@ -418,8 +641,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         onPressed: () => setS(() => optionCtrls.add(TextEditingController())),
                       )
                     ],
-                    const SizedBox(height: 12),
-                    ElevatedButton(onPressed: save, child: const Text('Save')),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: save,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Save Changes'),
+                      ),
+                    ),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -434,8 +669,111 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // Preview the current form (full-screen)
   void _openPreview() {
     final previewForm = ctrl.form ??
-        CustomFormModel(formName: _nameCtrl.text, subject: _subjectCtrl.text, description: _descCtrl.text, creatorId: ctrl.form?.creatorId ?? '');
-    Navigator.push(context, MaterialPageRoute(builder: (ctx) => FormPreviewScreen(form: previewForm, fields: List<FormFieldModel>.from(ctrl.fields))));
+        CustomFormModel(
+          formName: _nameCtrl.text,
+          subject: _subjectCtrl.text,
+          description: _descCtrl.text,
+          creatorId: ctrl.form?.creatorId ?? '',
+        );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => FormPreviewScreen(
+          form: previewForm,
+          fields: List<FormFieldModel>.from(ctrl.fields),
+        ),
+      ),
+    );
+  }
+
+  // Share form
+  Future<void> _shareForm() async {
+    // Save the form first if not saved
+    if (ctrl.form?.formId == null) {
+      final id = await ctrl.saveFormToDb();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Form saved (ID: $id)')),
+      );
+    }
+
+    // Fetch available teams
+    final teams = await ctrl.fetchTeams();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SizedBox(
+            height: 400,
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Share Form With Team',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: teams.length,
+                    itemBuilder: (ctx, i) {
+                      final team = teams[i];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          title: Text(
+                            team['team_name'] ?? 'Team ${team['id']}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.send, color: Colors.blue),
+                            onPressed: () async {
+                              await ctrl.shareFormToTeam(team['id']);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Form shared with ${team['team_name']}'),
+                                ),
+                              );
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // Save to Supabase
@@ -444,7 +782,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       if (ctrl.form == null) {
         final user = Supabase.instance.client.auth.currentUser;
         final creatorId = user?.id ?? 'unknown';
-        ctrl.createNewForm(creatorId: creatorId, name: _nameCtrl.text.isEmpty ? 'Untitled' : _nameCtrl.text);
+        ctrl.createNewForm(
+          creatorId: creatorId,
+          name: _nameCtrl.text.isEmpty ? 'Untitled' : _nameCtrl.text,
+        );
       }
       ctrl.updateFormName(_nameCtrl.text);
       ctrl.updateSubject(_subjectCtrl.text);
@@ -452,10 +793,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
       final id = await ctrl.saveFormToDb();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Form saved (ID: $id)')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Form saved (ID: $id)')),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving form: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving form: $e')),
+      );
     }
   }
 }
@@ -473,14 +818,34 @@ class FormPreviewScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text('Preview — ${form.formName}'),
       ),
+
+      
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(form.description),
-          const SizedBox(height: 12),
+          Text(
+            form.description,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 24),
           for (final f in fields) _buildPreviewField(f),
           const SizedBox(height: 30),
-          ElevatedButton(onPressed: () {}, child: const Text('Submit (preview only)')),
+          ElevatedButton(
+            onPressed: () {},
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'Submit (preview only)',
+              style: TextStyle(fontSize: 16),
+            ),
+          ),
         ],
       ),
     );
@@ -491,49 +856,89 @@ class FormPreviewScreen extends StatelessWidget {
       case 'text':
       case 'email':
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 16),
           child: TextField(
-            decoration: InputDecoration(labelText: f.label, hintText: f.rules.placeholder),
-            keyboardType: f.fieldType == 'email' ? TextInputType.emailAddress : TextInputType.text,
+            decoration: InputDecoration(
+              labelText: f.label,
+              hintText: f.rules.placeholder,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            keyboardType: f.fieldType == 'email' 
+                ? TextInputType.emailAddress 
+                : TextInputType.text,
           ),
         );
 
       case 'number':
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 16),
           child: TextField(
-            decoration: InputDecoration(labelText: f.label),
+            decoration: InputDecoration(
+              labelText: f.label,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
             keyboardType: TextInputType.number,
           ),
         );
 
       case 'radio':
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(f.label, style: const TextStyle(fontWeight: FontWeight.bold)),
-              ...?f.rules.options?.map((o) => RadioListTile(value: o, groupValue: null, onChanged: (_) {}, title: Text(o))),
+              Text(
+                f.label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...?f.rules.options?.map(
+                (o) => RadioListTile(
+                  value: o,
+                  groupValue: null,
+                  onChanged: (_) {},
+                  title: Text(o),
+                ),
+              ),
             ],
           ),
         );
 
       case 'checkbox':
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(f.label, style: const TextStyle(fontWeight: FontWeight.bold)),
-              ...?f.rules.options?.map((o) => CheckboxListTile(value: false, onChanged: (_) {}, title: Text(o))),
+              Text(
+                f.label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...?f.rules.options?.map(
+                (o) => CheckboxListTile(
+                  value: false,
+                  onChanged: (_) {},
+                  title: Text(o),
+                ),
+              ),
             ],
           ),
         );
 
       default:
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 16),
           child: Text('Unsupported preview for ${f.fieldType}'),
         );
     }
