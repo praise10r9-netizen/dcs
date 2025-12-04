@@ -170,7 +170,7 @@ class _SupervisorDashboardState extends State<SupervisorDashboard> {
                 ),
               ),
               const PopupMenuDivider(),
-              PopupMenuItem<String?>(
+              PopupMenuItem(
                 value: 'logout',
                 child: const Row(
                   children: [
@@ -313,6 +313,16 @@ class _SupervisorDashboardState extends State<SupervisorDashboard> {
                         icon: Icons.published_with_changes,
                         color: Colors.orange,
                         onTap: () => Navigator.pushNamed(context, "/liveSession"),
+                      ),
+                      const SizedBox(height: 16),
+
+                      _buildMenuButton(
+                        context: context,
+                        title: "Data Cleaning",
+                        subtitle: "Clean and prepare collected data for analysis",
+                        icon: Icons.cleaning_services,
+                        color: Colors.teal,
+                        onTap: () => Navigator.pushNamed(context, "/dataCleaning"),
                       ),
                       const SizedBox(height: 16),
 
