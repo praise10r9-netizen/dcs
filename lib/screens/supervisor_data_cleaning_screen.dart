@@ -40,7 +40,7 @@ class _SupervisorDataCleaningScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Data Cleaning & Preparation'),
-        backgroundColor: Colors.teal.shade700,
+        backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
       ),
       body: AnimatedBuilder(
@@ -102,11 +102,11 @@ class _SupervisorDataCleaningScreenState
                     leading: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.teal.shade50,
+                        color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.cleaning_services,
-                          color: Colors.teal.shade700),
+                          color: Colors.blue.shade700,),
                     ),
                     title: Text(
                       form['form_name'] ?? 'Untitled',
@@ -143,9 +143,9 @@ class _SupervisorDataCleaningScreenState
             child: Column(
               children: [
                 TabBar(
-                  labelColor: Colors.teal.shade700,
+                  labelColor: Colors.blue.shade700,
                   unselectedLabelColor: Colors.grey,
-                  indicatorColor: Colors.teal.shade700,
+                  indicatorColor: Colors.blue.shade700,
                   tabs: const [
                     Tab(text: 'Issues', icon: Icon(Icons.warning_amber, size: 20)),
                     Tab(text: 'Rules', icon: Icon(Icons.rule, size: 20)),
@@ -183,7 +183,7 @@ class _SupervisorDataCleaningScreenState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.teal.shade50,
+        color: Colors.blue.shade50,
         border: Border(
           bottom: BorderSide(color: Colors.grey.shade300),
         ),
@@ -589,7 +589,7 @@ class _SupervisorDataCleaningScreenState
                   : const Icon(Icons.check_circle),
               label: const Text('Apply Cleaning'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal.shade700,
+                backgroundColor: Colors.blue.shade700,
                 foregroundColor: Colors.white,
               ),
               onPressed: ctrl.cleaning ? null : _applyCleaningRules,

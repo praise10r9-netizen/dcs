@@ -220,7 +220,7 @@ class _SupervisorDashboardState extends State<SupervisorDashboard> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -233,15 +233,15 @@ class _SupervisorDashboardState extends State<SupervisorDashboard> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
+                          //color: Colors.blue.shade50,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           Icons.waving_hand,
-                          color: Colors.blue.shade700,
-                          size: 32,
+                          color: const Color.fromARGB(255, 208, 154, 19),
+                          size: 42,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -252,8 +252,8 @@ class _SupervisorDashboardState extends State<SupervisorDashboard> {
                             Text(
                               'Welcome back,',
                               style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
+                                fontSize: 28,
+                                color: const Color.fromARGB(255, 208, 242, 244),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -272,7 +272,8 @@ class _SupervisorDashboardState extends State<SupervisorDashboard> {
                 ),
 
                 const SizedBox(height: 24),
-
+                
+                //quick Actions Title
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
