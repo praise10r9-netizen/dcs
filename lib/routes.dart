@@ -11,6 +11,7 @@ import 'package:dcs/screens/supervisor_data_cleaning_screen.dart';
 import 'package:dcs/screens/team_builder_screen.dart';
 import 'package:dcs/screens/supervisor_dashboard.dart';
 import 'package:flutter/material.dart';
+import 'package:dcs/screens/admin_dashboard.dart';
 
 final Map<String, WidgetBuilder> appRoutes = {
   '/': (_) => SplashScreen(),
@@ -24,5 +25,5 @@ final Map<String, WidgetBuilder> appRoutes = {
   '/dataCleaning': (_) => SupervisorDataCleaningScreen(),
   '/dataValidation': (_) => FieldWorkerDataValidationScreen(),
   '/debugTeams': (_) => DebugTeamScreen(),
-  '/admin': (_) => Scaffold(body: Center(child: Text('Admin Dashboard'))),
+  '/admin': (_) => AdminDashboard(),
 };
